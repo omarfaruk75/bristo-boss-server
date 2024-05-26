@@ -70,13 +70,54 @@ async function run() {
     
     
     
-    //for menu
+    //for menu get
   app.get('/menu',async(req,res)=>{
     const result = await menuCollection.find().toArray()
     res.send(result)
 
   })
+    //for single  menu get
+  app.get('/menu/:id',async(req,res)=>{
+    const id=req.params.id;
+    // const query={_id:new ObjectId(id)}
+    const query={_id: id}
+    const result = await menuCollection.findOne(query);
+    console.log(result);
+    res.send(result)
 
+  })
+    
+    //for menu post
+  app.post('/menu',async(req,res)=>{
+    const item = req.body;
+    const result = await menuCollection.insertOne(item);
+    res.send(result)
+  })
+app.patch('/menu/:id',async(req,res)=>{
+  const item=req.body;
+  const id=req.params.id;
+  // const query={_id:new ObjectId(id)}
+  const query={_id: id}
+  const updatedDoc={
+    $set:{
+      name:item.name,
+      recipe:item.recipe,
+      price:item.price,
+      category:item.category,
+      image:item.image
+
+    }
+  }
+  const result=await menuCollection.updateOne(query,updatedDoc);
+  res.send(result);
+})
+
+app.delete('/menu/:id',verifyToken,verifyAdmin,async(req,res)=>{
+  const id=req.params.id;
+  const query={_id:new ObjectId(id)}
+  const result=await menuCollection.deleteOne(query);
+  res.send(result);
+})
 
 
 
