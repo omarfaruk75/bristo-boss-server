@@ -31,6 +31,7 @@ async function run() {
     const userCollection = client.db("bossDB").collection("users");
     const reviewsCollection = client.db("bossDB").collection("reviews");
     const cartsCollection = client.db("bossDB").collection("carts");
+    const paymentsCollection = client.db("bossDB").collection("payments");
     
     //jwt related api
     app.post('/jwt',async(req,res)=>{
@@ -214,6 +215,81 @@ app.delete('/users/:id',verifyToken,verifyAdmin, async(req,res)=>{
   })
     res.send({clientSecret: paymentIntent.client_secret})
   });
+app.get('/payments/:email',verifyToken,async(req,res)=>{
+  const query={email:req.params.email}
+  if(req.params.email!==req.decoded.email){
+    return res.status(403).send({message: 'forbidden access'})
+  }
+  const result = await paymentsCollection.find(query).toArray()
+  res.send(result)
+})
+
+//
+app.post('/payments',async(req,res)=>{
+  const payment=req.body;
+  const paymentsResult= await paymentsCollection.insertOne(payment);
+  //carefully delete each item from the cart
+console.log('payment info', payment);
+const query={_id:{
+  $in: payment.cartIds.map(id => new ObjectId(id))
+}};
+const deleteResult = await cartsCollection.deleteMany(query )
+res.send({paymentsResult,deleteResult})
+})
+
+//stats or analytics
+
+app.get('/admin-stats',verifyToken,verifyAdmin,async(req,res)=>{
+  const users=await userCollection.estimatedDocumentCount();
+  const menuItems=await menuCollection.estimatedDocumentCount();
+  const orders=await paymentsCollection.estimatedDocumentCount();
+  //this is the not best way
+  // const payments = await paymentsCollection.find().toArray();
+  // const revenue= payments.reduce((total,payment)=>total+payment.price,0)
+
+  const result = await paymentsCollection.aggregate([
+    {
+      $group:{
+        _id:null,
+        totalRevenue:{
+          $sum:'$price'
+        }
+      }
+    }
+  ]).toArray();
+  const revenue = result.length>0?result[0].totalRevenue:0;
+  res.send({users,menuItems,orders,revenue});
+})
+
+//to use aggregate pipeline
+app.get('/order-stats',async(req,res)=>{
+  const result=await paymentsCollection.aggregate([
+   { $unwind : '$menuItemIds'},
+   {
+    $lookup:{
+      from:'menu',
+      localField:'menuItemIds',
+      foreignField:"_id",
+      as:'menuItems'
+    }
+   },
+   
+    { $unwind : '$menuItems'},
+    {
+      $group:{
+        _id:'$menuItems.category',
+        quantity:{
+          $sum:1
+        },
+        revenue:{
+          $sum:'$menuItems.price'
+        }
+      }
+    }
+  ]).toArray();
+  res.send(result);
+})
+
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
